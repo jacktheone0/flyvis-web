@@ -1,9 +1,10 @@
-import { HexEye, StripSampler, decodeBase64 } from "./sim.js";
+// The email page: an email scrolls past the fly's eye while the network runs
+// in a worker; afterwards the fly "replies" with what its neurons did.
+import { HexEye, StripSampler } from "./sim.js";
+import { loadModel } from "./model.js";
+import { BrainView, FPS, VIEW, drawHexEye, frameRect } from "./brain-view.js";
+import { meanDepolarization, motionBalance } from "./motion.js";
 
-const FPS = 50; // simulation frames per second (dt = 20 ms)
-const CELL = 4; // panel pixels per lattice step
-const PANEL = 31 * CELL; // panel canvas size
-const TRACE_WINDOW = 6 * FPS; // frames shown in the cell trace
 const MAX_STRIP = 16000; // widest strip canvas every browser handles
 
 const EXAMPLES = [
@@ -24,116 +25,57 @@ const EXAMPLES = [
   },
 ];
 
-const GROUPS = {
-  retina: {
-    title: "Photoreceptors",
-    blurb: "Light hits these first. Every frame of the email is fed into R1–R8.",
-  },
-  intermediate: {
-    title: "Intermediate neurons",
-    blurb: "Lamina and medulla cells that filter the photoreceptor signal and pass it on.",
-  },
-  output: {
-    title: "Output neurons",
-    blurb: "Cells that project deeper into the brain. The model was trained so that visual motion can be read out from them.",
-  },
-};
-
 const $ = (id) => document.getElementById(id);
 const fmt = new Intl.NumberFormat("en-US");
 
-// ---------------------------------------------------------------- colors
-
-const REST_RGB = [34, 44, 56];
-const STOPS_POS = [[0, REST_RGB], [0.6, [255, 157, 61]], [1, [255, 241, 194]]];
-const STOPS_NEG = [[0, REST_RGB], [0.6, [47, 168, 255]], [1, [212, 240, 255]]];
-
-function ramp(stops, t) {
-  for (let s = 1; s < stops.length; s++) {
-    const [t1, c1] = stops[s];
-    const [t0, c0] = stops[s - 1];
-    if (t <= t1) {
-      const f = (t - t0) / (t1 - t0);
-      return c0.map((c, i) => Math.round(c + (c1[i] - c) * f));
-    }
-  }
-  return stops[stops.length - 1][1];
-}
-
-// 511 entries for values -1..1, packed for a little-endian Uint32 ImageData view.
-const LUT = new Uint32Array(511);
-for (let i = 0; i < 511; i++) {
-  const t = (i - 255) / 255;
-  const [r, g, b] = t >= 0 ? ramp(STOPS_POS, t) : ramp(STOPS_NEG, -t);
-  LUT[i] = (255 << 24) | (b << 16) | (g << 8) | r;
-}
-const lutIndex = (x) => (x >= 1 ? 510 : x <= -1 ? 0 : Math.round((x + 1) * 255));
-
-// ---------------------------------------------------------------- state
-
 const eye = new HexEye();
-let model; // network.json plus decoded arrays
+let model;
+let brain;
 let worker;
 let rest;
-let panels = [];
-let nodePixel;
-let selected;
-let gain = 1;
 let job = null; // the email currently being shown
 let runCounter = 0;
 let playing = true;
 let rate = 1;
+let meter = 0;
 
 // ---------------------------------------------------------------- boot
 
 async function boot() {
-  const data = await (await fetch("data/network.json")).json();
-  const type = decodeBase64(data.nodes.type, Uint8Array);
-  model = {
-    data,
-    types: data.cell_types,
-    typeIndex: Object.fromEntries(data.cell_types.map((c, k) => [c.name, k])),
-    type,
-    u: decodeBase64(data.nodes.u, Int8Array),
-    v: decodeBase64(data.nodes.v, Int8Array),
-    scale: Float32Array.from(type, (k) => data.cell_types[k].scale),
-    typeRange: data.cell_types.map(() => [type.length, 0]),
-  };
-  type.forEach((k, i) => {
-    const r = model.typeRange[k];
-    r[0] = Math.min(r[0], i);
-    r[1] = Math.max(r[1], i + 1);
-  });
-  $("model-name").textContent = data.meta.model;
-  $("fact-neurons").textContent = fmt.format(type.length);
+  model = await loadModel();
+  $("model-name").textContent = model.data.meta.model;
+  $("fact-neurons").textContent = fmt.format(model.type.length);
 
   buildExamples();
-  buildPanels();
-  selectType(model.typeIndex.T4a);
-  setGain();
-  drawEye(new Float32Array(eye.n).fill(0.5));
+  brain = new BrainView(model, {
+    groups: $("groups"),
+    detail: $("detail"),
+    gain: $("gain"),
+    emptyTrace: "Show the fly an email to see this cell respond",
+  });
+  drawHexEye($("eye-view"), eye, new Float32Array(eye.n).fill(0.5));
   drawScreen();
 
   worker = new Worker("js/worker.js", { type: "module" });
   worker.onmessage = onWorkerMessage;
   worker.onerror = (e) => status(`The simulation failed to start: ${e.message}`);
-  worker.postMessage({ type: "init", data });
+  worker.postMessage({ type: "init", data: model.data });
 }
 
 function onWorkerMessage({ data: msg }) {
   if (msg.type === "ready") {
     rest = msg.rest;
     $("fact-synapses").textContent = fmt.format(msg.nEdges);
-    drawPanels(rest);
+    brain.setRest(rest);
     $("show-btn").disabled = false;
     $("show-btn").textContent = "Show it to the fly";
     status("Ready. Pick an example or write your own email, then press the button.");
   } else if (msg.type === "progress" && job && msg.run === job.run) {
-    job.traces.set(msg.traces, job.t * model.types.length);
     job.activity.set(msg.activity, job.t);
     job.t = msg.t;
     job.state = msg.state;
     job.pending = false;
+    brain.appendTraces(msg.traces);
     render();
     if (msg.stats && !job.done) finish(msg.stats);
   }
@@ -223,11 +165,11 @@ function startRun(event) {
     clock: 0,
     state: rest,
     pending: false,
-    traces: new Float32Array(nFrames * model.types.length),
     activity: new Float32Array(nFrames),
     done: false,
   };
   worker.postMessage({ type: "load", run: job.run, frames, nFrames }, [frames.buffer]);
+  brain.resetTraces();
   $("reply").hidden = true;
   $("play-btn").disabled = false;
   $("skip-btn").disabled = false;
@@ -276,270 +218,34 @@ function render() {
   if (!job) return;
   const shown = Math.max(job.t - 1, 0);
   drawScreen(job.strip.canvas, shown * job.speed);
-  drawEye(job.sampler.frame(shown * job.speed));
-  drawPanels(job.state);
-  drawTrace();
+  drawHexEye($("eye-view"), eye, job.sampler.frame(shown * job.speed));
+  brain.draw(job.state);
   drawMeter();
   $("progress-bar").style.width = `${(100 * job.t) / job.nFrames}%`;
   $("clock").textContent = `${(job.t / FPS).toFixed(1)} s`;
 }
 
-// Hexal centers on the 380 px views: 12 px per lattice step. eye.y is
-// truncated like flyvis, so recompute the exact row for drawing.
-const VIEW = 380;
-const STEP = 12;
-const hexRows = (() => {
-  const rows = new Float32Array(eye.n);
-  let h = 0;
-  for (let u = -15; u <= 15; u++)
-    for (let v = Math.max(-15, -15 - u); v <= Math.min(15, 15 - u); v++) rows[h++] = u + v / 2;
-  return rows;
-})();
-
-function drawEye(values) {
-  const ctx = $("eye-view").getContext("2d");
-  ctx.fillStyle = "#0a0e13";
-  ctx.fillRect(0, 0, VIEW, VIEW);
-  const a = (2 * STEP) / 3;
-  const b = STEP / 2;
-  for (let h = 0; h < eye.n; h++) {
-    const cx = 10 + (eye.x[h] / eye.kernel + 15) * STEP;
-    const cy = 10 + (hexRows[h] + 15) * STEP;
-    const g = Math.round(Math.max(0, Math.min(1, values[h])) * 255);
-    ctx.fillStyle = `rgb(${g},${g},${g})`;
-    ctx.beginPath();
-    ctx.moveTo(cx - a, cy);
-    ctx.lineTo(cx - a / 2, cy - b);
-    ctx.lineTo(cx + a / 2, cy - b);
-    ctx.lineTo(cx + a, cy);
-    ctx.lineTo(cx + a / 2, cy + b);
-    ctx.lineTo(cx - a / 2, cy + b);
-    ctx.closePath();
-    ctx.fill();
-  }
-}
-
 function drawScreen(strip, offset = 0) {
   const ctx = $("screen-view").getContext("2d");
-  const s = STEP / eye.kernel; // same scale as the eye view
-  const origin = VIEW / 2 - (eye.size / 2) * s;
+  const { origin, size } = frameRect(eye);
   ctx.fillStyle = "#0a0e13";
   ctx.fillRect(0, 0, VIEW, VIEW);
   ctx.fillStyle = "#000";
-  ctx.fillRect(origin, origin, eye.size * s, eye.size * s);
+  ctx.fillRect(origin, origin, size, size);
   ctx.globalAlpha = 0.5; // what the fly gets: paper is 50% grey
   if (strip) {
-    ctx.drawImage(strip, offset, 0, eye.size, eye.size, origin, origin, eye.size * s, eye.size * s);
+    ctx.drawImage(strip, offset, 0, eye.size, eye.size, origin, origin, size, size);
   } else {
     ctx.fillStyle = "#fff";
-    ctx.fillRect(origin, origin, eye.size * s, eye.size * s);
+    ctx.fillRect(origin, origin, size, size);
   }
   ctx.globalAlpha = 1;
 }
 
-function buildPanels() {
-  const { types, type, u, v } = model;
-  const container = $("groups");
-  const byGroup = {};
-  for (const key of Object.keys(GROUPS)) {
-    const section = document.createElement("div");
-    section.className = "group";
-    section.innerHTML = `<h3>${GROUPS[key].title}</h3><p>${GROUPS[key].blurb}</p><div class="panels"></div>`;
-    container.append(section);
-    byGroup[key] = section.querySelector(".panels");
-  }
-  panels = types.map((ct, k) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "panel";
-    button.setAttribute("aria-label", `${ct.name}, ${ct.n} cells`);
-    const canvas = document.createElement("canvas");
-    canvas.width = canvas.height = PANEL;
-    const label = document.createElement("span");
-    label.textContent = ct.name;
-    button.append(canvas, label);
-    button.addEventListener("click", () => selectType(k));
-    byGroup[ct.group].append(button);
-    const ctx = canvas.getContext("2d");
-    const image = ctx.createImageData(PANEL, PANEL);
-    return { button, ctx, image, pixels: new Uint32Array(image.data.buffer) };
-  });
-  // Top-left pixel of each neuron's square, with columns offset by half a step.
-  nodePixel = new Int32Array(type.length);
-  for (let i = 0; i < type.length; i++) {
-    const x = (v[i] + 15) * CELL;
-    const y = (u[i] + 15) * CELL + v[i] * (CELL / 2);
-    nodePixel[i] = y * PANEL + x;
-  }
-}
-
-function drawPanels(state) {
-  const { type, scale } = model;
-  for (let i = 0; i < type.length; i++) {
-    const color = LUT[lutIndex(((state[i] - rest[i]) / scale[i]) * gain)];
-    const px = panels[type[i]].pixels;
-    const p = nodePixel[i];
-    for (let dy = 0; dy < CELL - 1; dy++) {
-      const row = p + dy * PANEL;
-      for (let dx = 0; dx < CELL - 1; dx++) px[row + dx] = color;
-    }
-  }
-  for (const panel of panels) panel.ctx.putImageData(panel.image, 0, 0);
-}
-
-function setGain() {
-  gain = 2 ** Number($("gain").value);
-  if (rest) drawPanels(job ? job.state : rest);
-}
-
-// ---------------------------------------------------------------- detail
-
-const FAMILIES = [
-  [/^R[1-6]$/, "Outer photoreceptor. R1–R6 feed the motion-vision pathways."],
-  [/^R[78]$/, "Inner photoreceptor, used for color vision. R7 and R8 bypass the lamina and connect directly in the medulla."],
-  [/^L[1-5]$/, "Lamina monopolar cell, the first relay after the photoreceptors. L1 feeds the ON-motion pathway and L2 the OFF pathway."],
-  [/^Lawf/, "Lamina wide-field cell. There are far fewer of these than columns."],
-  [/^Am$/, "Lamina amacrine cell."],
-  [/^C[23]$/, "Centrifugal neuron that sends feedback from the medulla back to the lamina."],
-  [/^CT1/, "CT1 is a single giant cell whose branches reach every column. The model splits it into its medulla (M10) and lobula (Lo1) compartments."],
-  [/^Mi/, "Medulla intrinsic neuron, which stays within the medulla. Mi1, Mi4 and Mi9 feed the ON-motion detectors (T4)."],
-  [/^T[123]a?$/, "Columnar T-shaped neuron."],
-  [/^T4/, "ON-motion detector: it responds to bright edges moving in one direction."],
-  [/^T5/, "OFF-motion detector: it responds to dark edges moving in one direction."],
-  [/^TmY/, "Transmedullary Y neuron. It carries signals from the medulla to both the lobula and the lobula plate."],
-  [/^Tm/, "Transmedullary neuron. It carries signals from the medulla to the lobula. Tm1, Tm2, Tm4 and Tm9 feed the OFF-motion detectors (T5)."],
-];
-
-function tuningNote(name) {
-  const tu = model.data.direction_tuning[name];
-  if (!tu) return "";
-  const pol = name.startsWith("T4") ? "on" : "off";
-  const resp = ["right", "left", "up", "down"].map((d) => tu[`${d}_${pol}`]).sort((a, b) => b - a);
-  const weak = resp[0] < 1.2 * resp[1];
-  return ` In this model it responds most to motion toward the <strong>${tu.preferred}</strong> of the screen${weak ? " (weakly tuned)" : ""}.`;
-}
-
-function connections(k, side) {
-  const f = model.data.filters;
-  const totals = new Map();
-  for (let e = 0; e < f.weight.length; e++) {
-    const [self, other] = side === "in" ? [f.target[e], f.source[e]] : [f.source[e], f.target[e]];
-    if (self !== k) continue;
-    const t = totals.get(other) ?? { count: 0, sign: Math.sign(f.weight[e]) };
-    t.count += f.count[e];
-    totals.set(other, t);
-  }
-  return [...totals.entries()]
-    .map(([other, t]) => ({ other, ...t }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 7);
-}
-
-function barList(k, side) {
-  const list = connections(k, side);
-  if (!list.length) return `<p class="muted small">None in this model.</p>`;
-  const max = list[0].count;
-  const sign = (s) => (s > 0 ? "exc" : "inh");
-  return `<ul class="bars">${list
-    .map(
-      (c) => `<li><button type="button" data-type="${c.other}">${model.types[c.other].name}</button>
-      <div class="bar ${sign(c.sign)}" style="width:${Math.max(4, (100 * c.count) / max)}%"
-        title="${c.sign > 0 ? "excitatory" : "inhibitory"}"></div>
-      <span class="n">${c.count < 10 ? c.count.toFixed(1) : Math.round(c.count)}</span></li>`,
-    )
-    .join("")}</ul>`;
-}
-
-function selectType(k) {
-  selected = k;
-  panels.forEach((p, i) => p.button.classList.toggle("selected", i === k));
-  const ct = model.types[k];
-  const family = FAMILIES.find(([re]) => re.test(ct.name))?.[1] ?? "";
-  const detail = $("detail");
-  detail.innerHTML = `
-    <h3>${ct.name}</h3>
-    <p class="family">${family}${tuningNote(ct.name)}</p>
-    <p class="muted small">${fmt.format(ct.n)} cells · time constant ${Math.round(ct.tau * 1000)} ms</p>
-    <h4>Center cell, change from rest</h4>
-    <canvas id="trace" width="600" height="260" aria-label="Activity of the center ${ct.name} cell over time"></canvas>
-    <h4>Strongest inputs <span class="muted">(synapses per cell)</span></h4>
-    ${barList(k, "in")}
-    <h4>Strongest outputs <span class="muted">(synapses per target cell)</span></h4>
-    ${barList(k, "out")}
-    <p class="muted small"><span style="color:var(--warm)">■</span> excitatory
-      <span style="color:var(--cool)">■</span> inhibitory</p>`;
-  detail.querySelectorAll("[data-type]").forEach((b) =>
-    b.addEventListener("click", () => selectType(Number(b.dataset.type))),
-  );
-  drawTrace();
-}
-
-function drawTrace() {
-  const canvas = $("trace");
-  if (!canvas) return;
-  const ctx = canvas.getContext("2d");
-  const { width: W, height: H } = canvas;
-  ctx.clearRect(0, 0, W, H);
-  ctx.strokeStyle = "#243140";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(0, H / 2);
-  ctx.lineTo(W, H / 2);
-  ctx.stroke();
-  if (!job || job.t === 0) {
-    ctx.fillStyle = "#8d9bab";
-    ctx.font = "24px system-ui, sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText("Show the fly an email to see this cell respond", W / 2, H / 2 - 16);
-    return;
-  }
-  // Scrolling window over the last TRACE_WINDOW frames; fixed y-scale per run.
-  const nTypes = model.types.length;
-  const trace = (t) => job.traces[t * nTypes + selected];
-  let peak = model.types[selected].scale * 0.1;
-  for (let t = 0; t < job.t; t++) peak = Math.max(peak, Math.abs(trace(t)));
-  const start = Math.max(0, job.t - TRACE_WINDOW);
-  ctx.strokeStyle = "#ffb454";
-  ctx.lineWidth = 3;
-  ctx.lineJoin = "round";
-  ctx.beginPath();
-  for (let t = start; t < job.t; t++) {
-    const x = ((t - start) / TRACE_WINDOW) * W;
-    const y = H / 2 - (trace(t) / peak) * (H / 2 - 30);
-    t > start ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
-  }
-  ctx.stroke();
-  ctx.fillStyle = "#8d9bab";
-  ctx.font = "22px system-ui, sans-serif";
-  ctx.textAlign = "left";
-  ctx.fillText(`${(start / FPS).toFixed(1)} s`, 8, H - 8);
-  ctx.textAlign = "right";
-  ctx.fillText(`${(job.t / FPS).toFixed(1)} s`, W - 8, H - 8);
-}
-
-// Motion evidence per direction from the direction-selective T4/T5 cells:
-// each type's mean depolarization, normalized by its response to a
-// full-contrast edge moving its preferred way. `meanDepolarization(k)` gives
-// the value for cell type k.
-function motionEvidence(meanDepolarization) {
-  const evidence = { left: 0, right: 0, up: 0, down: 0 };
-  for (const [name, tu] of Object.entries(model.data.direction_tuning)) {
-    const pol = name.startsWith("T4") ? "on" : "off";
-    evidence[tu.preferred] += meanDepolarization(model.typeIndex[name]) / tu[`${tu.preferred}_${pol}`];
-  }
-  return evidence;
-}
-
-let meter = 0;
+// Live left/right balance of the direction-selective T4/T5 cells.
 function drawMeter() {
-  const { left, right } = motionEvidence((k) => {
-    const [a, b] = model.typeRange[k];
-    let sum = 0;
-    for (let i = a; i < b; i++) sum += Math.max(job.state[i] - rest[i], 0);
-    return sum / (b - a);
-  });
-  const target = (right - left) / (right + left + 0.05);
-  meter += 0.25 * (target - meter);
+  const depol = model.detectors.map((d) => meanDepolarization(job.state, rest, model.typeRange[d.k]));
+  meter += 0.25 * (motionBalance(model.detectors, depol).balance - meter);
   const fill = $("meter-fill");
   fill.style.left = `${50 + Math.min(meter, 0) * 50}%`;
   fill.style.width = `${Math.abs(meter) * 50}%`;
@@ -553,14 +259,16 @@ function finish(stats) {
   job.done = true;
   $("skip-btn").disabled = true;
   $("play-btn").disabled = true;
-  const { types } = model;
 
-  const evidence = motionEvidence((k) => stats.meanDepolarization[k]);
+  const { evidence } = motionBalance(
+    model.detectors,
+    model.detectors.map((d) => stats.meanDepolarization[d.k]),
+  );
   const dir = evidence.left >= evidence.right ? "left" : "right";
   const other = dir === "left" ? "right" : "left";
   const ratio = evidence[dir] / Math.max(evidence[other], 1e-9);
 
-  const busiest = types
+  const busiest = model.types
     .map((ct, k) => ({ name: ct.name, activity: stats.meanActivity[k] }))
     .filter((c) => !/^R\d$/.test(c.name))
     .sort((a, b) => b.activity - a.activity)
@@ -568,19 +276,17 @@ function finish(stats) {
     .map((c) => c.name);
 
   const seconds = (job.nFrames / FPS).toFixed(1);
-  const chars = job.strip.chars;
-  const busy = busiestMoment();
   const motion =
     ratio >= 1.15
       ? `My ${dir}ward-motion detectors (T4 and T5 cells) were ${ratio.toFixed(1)}× as active as the ${other}ward ones, so your words were clearly moving ${dir}. A real fly would probably try to turn with them.`
       : `My motion detectors couldn't agree on a direction (${dir}ward won by only ${ratio.toFixed(2)}×).`;
-  const reply = `Bzzz! Your message scrolled past my eye for ${seconds} seconds (${chars} characters).
+  const reply = `Bzzz! Your message scrolled past my eye for ${seconds} seconds (${job.strip.chars} characters).
 
 I have to be honest: I can't read. Each of my 721 eye facets sees one blurry patch of the world, so your words reached me as dark shapes sliding ${dir}.
 
 Here's what my brain did with them:
 • ${motion}
-• ${busy}
+• ${busiestMoment()}
 • Relative to their usual range, the cell types that reacted most were ${busiest[0]}, ${busiest[1]} and ${busiest[2]}.
 
 Buzz,
@@ -626,7 +332,6 @@ function status(text) {
 $("email-form").addEventListener("submit", startRun);
 $("play-btn").addEventListener("click", () => setPlaying(!playing));
 $("skip-btn").addEventListener("click", skipToEnd);
-$("gain").addEventListener("input", setGain);
 document.querySelectorAll(".rate button").forEach((b) =>
   b.addEventListener("click", () => {
     rate = Number(b.dataset.rate);
