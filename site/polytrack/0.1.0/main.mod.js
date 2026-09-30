@@ -83,6 +83,7 @@ function mountPanel(siteRoot) {
   panel.id = "fly-driver-panel";
   panel.style.cssText =
     "position:fixed;right:12px;top:64px;z-index:1000;width:200px;padding:10px;border-radius:10px;" +
+    "max-height:calc(100vh - 76px);overflow-y:auto;box-sizing:border-box;" +
     "background:rgba(10,14,19,.88);color:#e8eef4;font:12px/1.4 system-ui,sans-serif;pointer-events:auto";
   panel.innerHTML = `
     <div style="font-weight:700;font-size:14px;margin-bottom:6px">🪰 Fly driver</div>
@@ -98,6 +99,7 @@ function mountPanel(siteRoot) {
     </div>
     <div style="margin-top:8px;color:#8d9bab;font-size:11px">2 · Learn</div>
     <button data-act="train" style="${BUTTON}background:#243140;color:#e8eef4" disabled>Train the fly</button>
+    <button data-act="clear" style="${BUTTON}background:transparent;color:#8d9bab;font-weight:400;padding:3px" disabled>Forget recorded laps</button>
     <div style="margin-top:8px;color:#8d9bab;font-size:11px">3 · Race</div>
     <button data-act="fly" style="${BUTTON}background:#ffb454;color:#1d1305" disabled>Let the fly drive</button>
     <div style="color:#8d9bab;margin-top:8px;font-size:11px">The fly and the autopilot run in slow motion: game time waits for the fly's brain. Leaderboards and multiplayer are off while this mod is loaded.</div>`;
@@ -132,13 +134,17 @@ function mountPanel(siteRoot) {
     }
     buttons.fly.disabled ||= !decoder;
     buttons.train.disabled = Boolean(run) || !recording || recording.features.length < 500;
+    buttons.clear.disabled = Boolean(run) || !recording;
   };
 
   const stop = () => {
     run.driver.stop();
     if (run.mode !== "fly") {
-      recording = run.driver.recording;
-      text.textContent = `Recorded ${(recording.features.length / 50).toFixed(0)} s of driving. Now train the fly.`;
+      // Recordings add up, so several laps can be taught one at a time.
+      const r = run.driver.recording;
+      recording ??= { features: [], steer: [], throttle: [] };
+      for (const key of ["features", "steer", "throttle"]) recording[key].push(...r[key]);
+      text.textContent = `${recording.features.length} frames recorded in total. Teach more laps, or train the fly.`;
     } else {
       text.textContent = "Stopped. Real time is back.";
     }
@@ -166,7 +172,7 @@ function mountPanel(siteRoot) {
         const who = mode === "fly" ? "The fly is driving" : mode === "auto" ? "Autopilot driving, fly watching" : "You're driving, fly watching";
         const turn = Math.abs(s.steer) < 0.05 ? "straight" : s.steer < 0 ? "left" : "right";
         text.textContent = `${who}\nSteering ${turn} · ${s.throttle ? "accelerating" : "coasting"}` +
-          (mode === "fly" ? "" : `\nRecorded ${(driver.recording.features.length / 50).toFixed(0)} s`);
+          (mode === "fly" ? "" : `\nThis session: ${driver.recording.features.length} frames`);
       },
     });
     run = { mode, driver };
@@ -176,6 +182,11 @@ function mountPanel(siteRoot) {
   buttons.auto.addEventListener("click", () => start("auto"));
   buttons.human.addEventListener("click", () => start("human"));
   buttons.fly.addEventListener("click", () => start("fly"));
+  buttons.clear.addEventListener("click", () => {
+    recording = null;
+    text.textContent = "Recording cleared.";
+    refresh();
+  });
   buttons.train.addEventListener("click", async () => {
     buttons.train.disabled = true;
     text.textContent = "Training…";
@@ -185,7 +196,7 @@ function mountPanel(siteRoot) {
     saveDecoder(decoder);
     const pct = (x) => `${Math.round(Math.max(0, x) * 100)}%`;
     text.textContent =
-      `Trained on ${(decoder.nFrames / 50).toFixed(0)} s of driving.\n` +
+      `Trained on ${decoder.nFrames} frames of driving.\n` +
       `On driving it didn't train on, it explains ${pct(decoder.score.steer)} of the steering and ${pct(decoder.score.throttle)} of the throttle.`;
     refresh();
   });

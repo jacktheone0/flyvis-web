@@ -41,9 +41,10 @@
       <h2 id="use-heading">Teach, train, race</h2>
       <ol class="steps">
         <li><strong>Start a race.</strong> Summer 1 is a good first track: it has walls and plain curves.</li>
-        <li><strong>Teach.</strong> Press <em>Autopilot drives</em> or <em>I drive</em> and do about a lap. The fly
-          only watches: every frame, the mod records what its output neurons do and which keys the teacher is
-          pressing. Press <em>Stop</em> when done.</li>
+        <li><strong>Teach.</strong> Press <em>I drive</em> and drive a clean lap, then press <em>Stop</em>. Repeat for
+          3–5 laps: each lap is added to the recording. The fly only watches. Every frame, the mod records what its
+          output neurons do and which keys you're pressing. (<em>Autopilot drives</em> is a simple built-in teacher, but it
+          crashes too often to teach well.)</li>
         <li><strong>Train.</strong> The mod fits a decoder that turns the fly's neuron activity into steering and
           throttle, and reports how well it predicts driving it didn't train on. The trained fly is saved in your browser.</li>
         <li><strong>Race.</strong> Press <em>Let the fly drive</em>. Now only the fly's neurons choose the keys.</li>
@@ -74,7 +75,12 @@
             Slow-motion laps aren't real laps.</p>
         </div>
       </div>
-      <p id="results" class="muted small"></p>
+      <h3>How well does it drive?</h3>
+      <p>Honestly: unproven. In testing, the mod, the slow motion and the whole teach, train and race loop work, but
+        the built-in autopilot was too poor a teacher. A decoder trained on its laps couldn't predict steering on
+        track it hadn't seen. Clean laps from a human are the experiment. The accuracy shown after training (how much
+        of your steering the fly predicts on driving it didn't train on) tells you whether it has a chance. Well above 50% is promising;
+        near zero means it hasn't learned to drive.</p>
       <p class="muted small">PolyTrack is by Kodub. PolyModLoader is a community project; this mod doesn't include
         or redistribute any game files. Blocking online writes follows the approach of
         <a href="https://github.com/Gotchaaaaaa/poly-bot">poly-bot</a>. This project isn't affiliated with Kodub, PolyModLoader or the
