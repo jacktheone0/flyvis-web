@@ -289,3 +289,8 @@ figcaption { font-size: 0.8rem; color: var(--muted); margin-top: 6px; text-align
   .panels { grid-template-columns: repeat(auto-fill, minmax(66px, 1fr)); gap: 6px; }
   .legend { width: 100%; }
 }
+
+/* ---- PolyTrack page */
+.steps { padding-left: 20px; margin: 0 0 12px; color: #c4cfda; }
+.steps li { margin-bottom: 10px; }
+pre.url { margin: 8px 0 0; padding: 10px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; font: 0.9rem var(--mono); overflow-x: auto; color: var(--warm); }
