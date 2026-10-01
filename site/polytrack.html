@@ -41,15 +41,24 @@
       <h2 id="use-heading">Teach, train, race</h2>
       <ol class="steps">
         <li><strong>Start a race.</strong> Summer 1 is a good first track: it has walls and plain curves.</li>
-        <li><strong>Teach.</strong> Press <em>I drive</em> and drive a clean lap, then press <em>Stop</em>. Repeat for
-          3–5 laps: each lap is added to the recording. The fly only watches. Every frame, the mod records what its
-          output neurons do and which keys you're pressing. (<em>Autopilot drives</em> is a simple built-in teacher, but it
-          crashes too often to teach well.)</li>
-        <li><strong>Train.</strong> The mod fits a decoder that turns the fly's neuron activity into steering and
-          throttle, and reports how well it predicts driving it didn't train on. The trained fly is saved in your browser.</li>
-        <li><strong>Race.</strong> Press <em>Let the fly drive</em>. Now only the fly's neurons choose the keys.</li>
+        <li><strong>Teach.</strong> Press <em>I drive</em> and drive 3–5 clean laps (stop and start again between
+          laps if you like; everything adds up). Include a few recoveries: drift toward a wall on purpose, then steer back.</li>
+        <li><strong>Train.</strong> Press <em>Train the fly</em>. It says how much of your steering it predicts on
+          driving it didn't train on.</li>
+        <li><strong>Race.</strong> Restart the race and press <kbd>F</kbd>. The fly drives in slow motion.</li>
       </ol>
-      <p class="muted small">If the car stops for more than 1.5 seconds, a helper presses "return to last checkpoint". That helper isn't the fly.</p>
+      <h3>While it drives, everything happens in the game</h3>
+      <ul class="steps">
+        <li><strong>Correct it:</strong> just press the arrow keys. You take over at once; let go and the fly takes
+          back over about half a second later. Your corrections count double, and the fly retrains in the background.</li>
+        <li><strong>Reward it:</strong> <kbd>G</kbd> (😊, "dopamine") when it did well, <kbd>B</kbd> (😖, "pain") when it
+          did badly. Passing a checkpoint is an automatic reward; crashing or getting stuck is an automatic punishment.</li>
+        <li><strong>Pick its brain:</strong> <em>Route memory</em> recalls what you did where the view looked the same
+          (how ants and bees follow routes). It's best for repeating one track. <em>Decoder</em> is a learned rule that
+          can generalize, and responds to rewards directly.</li>
+      </ul>
+      <p class="muted small">Everything it learned is saved in your browser. <em>Forget everything it learned</em> starts over.
+        If the car stops for 1.5 seconds, a helper presses "return to last checkpoint". That helper isn't the fly.</p>
     </section>
 
     <section class="card about" aria-labelledby="how-heading">
@@ -63,10 +72,12 @@
             6 × 3 grid of the visual field.</p>
         </div>
         <div>
-          <h3>What's added</h3>
-          <p>A real fly has no decoder for arrow keys. That job is learned by imitation, like the
-            <a href="flight.html">flight simulator's</a> trained decoder. The autopilot teacher is simple: it follows
-            the road's grey color. The fly can only be as good as its teacher, and usually is a bit worse.</p>
+          <h3>How it learns</h3>
+          <p>The fly's own wiring never changes. On top of its output neurons it learns three ways. It <em>imitates</em>
+            you: a decoder fitted to your laps and corrections. It <em>remembers</em>: stored views from your laps.
+            It is <em>reinforced</em>: it wobbles its steering slightly, and a reward strengthens whatever it did in the
+            last 1.5 seconds, the most recent moments most (like dopamine acting on an eligibility trace), while a
+            punishment reverses it. Its features include a slowly fading trace of the last half-second, a little short-term memory.</p>
         </div>
         <div>
           <h3>Slow motion and fair play</h3>
@@ -77,7 +88,7 @@
       </div>
       <h3>How well does it drive?</h3>
       <p>Honestly: unproven. In testing, the mod, the slow motion and the whole teach, train and race loop work, but
-        the built-in autopilot was too poor a teacher. A decoder trained on its laps couldn't predict steering on
+        the built-in autopilot I first tried was too poor a teacher, so it's gone. A decoder trained on its laps couldn't predict steering on
         track it hadn't seen. Clean laps from a human are the experiment. The accuracy shown after training (how much
         of your steering the fly predicts on driving it didn't train on) tells you whether it has a chance. Well above 50% is promising;
         near zero means it hasn't learned to drive.</p>

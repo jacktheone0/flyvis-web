@@ -17,8 +17,8 @@ A model of the fruit fly's visual system, running entirely in your browser, with
 - **[PolyTrack mod](https://jacktheone0.github.io/flyvis-web/polytrack.html):** a
   [PolyModLoader](https://web.polymodloader.com/) mod for Kodub's PolyTrack. Add the mod URL
   `https://jacktheone0.github.io/flyvis-web/polytrack`. Drive a few laps while the fly
-  watches, train a decoder on its output neurons, then let the fly drive, in slow motion
-  (game time waits for the fly's brain). Leaderboards and multiplayer are disabled while it's
+  watches, train it, then let it drive in slow motion (game time waits for the fly's brain).
+  Correct it with the arrow keys, reward it with G and punish it with B. Leaderboards and multiplayer are disabled while it's
   loaded. Whether the fly learns to drive well is an open experiment.
 
 The model is [flyvis](https://github.com/TuragaLab/flyvis), from Lappalainen et al.,
@@ -52,8 +52,8 @@ visual motion (optic flow).
 | `site/js/flight-worker.js`, `flight.js` | Runs the flight and training in a worker; the page draws the world, the eye, a compass, the heading plot and the brain. |
 | `site/js/brain-view.js`, `model.js`, `motion.js` | Shared by both pages: the cell-type panels and detail view, model loading, and the T4/T5 motion readouts. |
 | `tests/sim.test.mjs` | Compares the JS port with flyvis outputs saved in `tests/fixtures/reference.json`: eye sampling, resting state and 60 frames of full-network responses. They agree to about 1e-6. |
-| `site/polytrack/` | The PolyTrack mod: `manifest.json` and `0.1.0/main.mod.js` (panel, physics-clock patch, online-write blocks), `fly-driver.js` (frame capture → fly eye → network → keys; recording, decoder training), `autopilot.js` (a simple teacher). |
-| `tests/polytrack.test.mjs` | Checks the mod's decoder training on synthetic data. |
+| `site/polytrack/` | The PolyTrack mod: `manifest.json` and `0.2.0/main.mod.js` (panel, F/G/B hotkeys, physics-clock patch, online-write blocks); `fly-driver.js` (frame capture → fly eye → network → keys, instant takeover for corrections, exploration, automatic rewards); `learner-core.js` (ridge decoder, route memory, dopamine/pain updates); `learner-worker.js` (background training, saved in IndexedDB). |
+| `tests/polytrack.test.mjs` | Checks the mod's learning rules (decoder, route memory, rewards) on synthetic data. |
 | `tests/flight.test.mjs` | Checks that the fly senses which way the world turns, that the reflex and a trained decoder both reduce spin, and that worlds wrap seamlessly. |
 
 ## Run locally

@@ -294,3 +294,4 @@ figcaption { font-size: 0.8rem; color: var(--muted); margin-top: 6px; text-align
 .steps { padding-left: 20px; margin: 0 0 12px; color: #c4cfda; }
 .steps li { margin-bottom: 10px; }
 pre.url { margin: 8px 0 0; padding: 10px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; font: 0.9rem var(--mono); overflow-x: auto; color: var(--warm); }
+kbd { font: 600 0.85em var(--mono); padding: 1px 6px; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 5px; background: var(--surface-2); color: var(--text); }
