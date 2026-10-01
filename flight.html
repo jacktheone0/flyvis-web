@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fly Flight Simulator</title>
+  <meta name="description" content="Wind spins a simulated fruit fly around. Switch on its connectome-based visual system and it steers itself back on course, then train a decoder on its motion detectors in your browser.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cg fill='%23ffb454'%3E%3Cpath d='M16 4l10 6v12l-10 6-10-6V10z' opacity='.35'/%3E%3Cpath d='M16 10l5 3v6l-5 3-5-3v-6z'/%3E%3C/g%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="masthead">
+    <div class="wrap">
+      <nav class="site-nav" aria-label="Pages">
+        <a href="./">Email demo</a>
+        <a href="flight.html" aria-current="page">Flight simulator</a>
+        <a href="polytrack.html">PolyTrack</a>
+      </nav>
+      <p class="eyebrow">Drosophila visual system · closed-loop flight</p>
+      <h1>Keep the fly on course</h1>
+      <p class="lede">Wind keeps spinning the fly around. Switch its brain on and it steers back using its
+        motion-detecting neurons, the reflex real flies use to fly straight. Then train it to do better.</p>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="card flight-card" aria-labelledby="flight-heading">
+      <div class="flight-top">
+        <div>
+          <h2 id="flight-heading">The flight</h2>
+          <p class="muted small">The strip is the whole 360° world. The bright frame is the part the fly's eye covers, about 150° with one facet per 5°.</p>
+        </div>
+        <div class="spin" aria-live="off">
+          <span class="muted small">Spin, last 5 s</span>
+          <strong id="spin">–</strong>
+        </div>
+      </div>
+      <canvas id="world" width="936" height="391" aria-label="The 360-degree world, with the part the fly sees highlighted"></canvas>
+      <div class="flight-views">
+        <figure>
+          <canvas id="front-view" width="380" height="380" aria-label="The world in front of the fly"></canvas>
+          <figcaption>In front of the fly</figcaption>
+        </figure>
+        <figure>
+          <canvas id="eye-view" width="380" height="380" aria-label="The same view sampled by the fly's 721 eye facets"></canvas>
+          <figcaption>The fly's eye: 721 facets</figcaption>
+        </figure>
+        <figure>
+          <canvas id="compass" width="380" height="380" aria-label="The fly's heading, seen from above"></canvas>
+          <figcaption>Heading from above</figcaption>
+        </figure>
+      </div>
+
+      <div class="controls">
+        <div class="control">
+          <span class="control-label" id="brain-label">Brain</span>
+          <div class="seg" role="group" aria-labelledby="brain-label">
+            <button type="button" data-mode="off" aria-pressed="true">Off</button>
+            <button type="button" data-mode="simple" aria-pressed="false">Simple reflex</button>
+            <button type="button" data-mode="trained" aria-pressed="false" disabled title="Train the decoder first">Trained decoder</button>
+          </div>
+        </div>
+        <div class="control">
+          <span class="control-label" id="wind-label">Wind</span>
+          <div class="seg" role="group" aria-labelledby="wind-label">
+            <button type="button" data-wind="calm" aria-pressed="false">Calm</button>
+            <button type="button" data-wind="breezy" aria-pressed="true">Breezy</button>
+            <button type="button" data-wind="stormy" aria-pressed="false">Stormy</button>
+          </div>
+        </div>
+        <div class="control buttons">
+          <button id="world-btn" type="button" disabled>New world</button>
+          <button id="pause-btn" type="button" disabled aria-label="Pause">❚❚</button>
+        </div>
+      </div>
+
+      <canvas id="heading-plot" width="1200" height="240" aria-label="The fly's heading over the last 20 seconds"></canvas>
+      <div class="plot-legend">
+        <span class="muted small">Heading, last 20 s. Background shows who was steering:</span>
+        <span><i class="swatch off"></i>Brain off</span>
+        <span><i class="swatch simple"></i>Simple reflex</span>
+        <span><i class="swatch trained"></i>Trained decoder</span>
+      </div>
+      <p id="status" class="status" role="status" aria-live="polite">Loading the fly's brain…</p>
+    </section>
+
+    <section class="card train-card" aria-labelledby="train-heading">
+      <div class="train-grid">
+        <div>
+          <h2 id="train-heading">Train the fly</h2>
+          <p>The simple reflex is a rule I wrote by hand: turn toward whichever way the motion detectors say the world is moving.
+            A trained decoder can do better. The fly watches four other worlds spin at random speeds while its brain stays exactly
+            as published. Least-squares regression then learns 8 weights, one per motion-detector type, that turn their
+            activity into an estimate of how fast the fly is spinning. The fly turns against that estimate.</p>
+          <p class="muted small">Training and the test flights take about 15 seconds on a laptop. The flight pauses meanwhile.</p>
+          <button id="train-btn" class="primary" type="button" disabled>Train the decoder</button>
+          <div class="progress train-progress" aria-hidden="true"><div id="train-bar"></div></div>
+        </div>
+        <div id="train-results" hidden>
+          <h3>Accuracy</h3>
+          <p id="r2-text"></p>
+          <h3>Learned weights</h3>
+          <p class="muted small">How much each motion-detector type counts toward "the fly is turning right" (positive) or "turning left" (negative). In brackets: the direction of motion that type prefers.</p>
+          <ul id="weights" class="chart"></ul>
+          <p id="weights-note" class="muted small" hidden>The pattern makes physical sense: when the fly turns right, the world slides left across its eye, so the detectors that prefer leftward motion (T4a, T5a) learned to vote "turning right", and the rightward ones (T4b, T5b) "turning left".</p>
+          <h3>Test flight</h3>
+          <p id="test-caption" class="muted small"></p>
+          <ul id="test" class="chart"></ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="brain" aria-labelledby="brain-heading">
+      <div class="brain-head">
+        <div>
+          <h2 id="brain-heading">Inside the brain</h2>
+          <p class="muted">Every square is one neuron, drawn where its column sits in the eye. Each panel is one cell type (all cells of a type share the same wiring). Click a panel to see its wiring and activity.</p>
+        </div>
+        <div class="legend">
+          <div class="colorbar" aria-hidden="true"></div>
+          <div class="legend-labels"><span>hyperpolarized</span><span>rest</span><span>depolarized</span></div>
+          <label class="gain">Contrast <input id="gain" type="range" min="0" max="4" step="0.5" value="1.5"></label>
+        </div>
+      </div>
+      <div class="brain-body">
+        <div id="groups"></div>
+        <aside id="detail" class="card detail" aria-live="polite"></aside>
+      </div>
+    </section>
+
+    <section class="about card" aria-labelledby="about-heading">
+      <h2 id="about-heading">What's real here?</h2>
+      <div class="about-grid">
+        <div>
+          <h3>Real</h3>
+          <p>The fly's visual system is the <a href="https://github.com/TuragaLab/flyvis">flyvis</a> model from Lappalainen et al.
+            (<a href="https://www.nature.com/articles/s41586-024-07939-3">Nature, 2024</a>): 45,669 neurons wired from its connectome, the same network as on the
+            <a href="./">email page</a>. Every response you see comes from simulating it.</p>
+        </div>
+        <div>
+          <h3>Added for the simulation</h3>
+          <p>The world, the wind and the steering rules. Only turning is simulated: no forward flight and no inertia.
+            In a real fly, lobula plate cells pool the T4/T5 signals and descending neurons drive the wings. Those aren't in
+            the model, so the simple reflex and the trained decoder stand in for them.</p>
+        </div>
+        <div>
+          <h3>What to expect</h3>
+          <p>Steering usually cuts the spin by 30–50%. The fly can't cancel it completely: its neurons react with a
+            delay, and in strong wind the world moves faster than its motion detectors can track.</p>
+        </div>
+      </div>
+      <p class="muted small">Model, weights and connectome: flyvis, MIT License © 2023 Janne K. Lappalainen, Fabian D. Tschopp,
+        Mason McGill, Jakob H. Macke, Srinivas C. Turaga. This site isn't affiliated with the authors.</p>
+    </section>
+  </main>
+
+  <script type="module" src="js/flight.js"></script>
+</body>
+</html>

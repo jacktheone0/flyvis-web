@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fly Plays PolyTrack</title>
+  <meta name="description" content="A PolyModLoader mod that lets the flyvis fruit-fly visual system drive in PolyTrack: teach it a lap, train a decoder on its neurons, then let it race.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cg fill='%23ffb454'%3E%3Cpath d='M16 4l10 6v12l-10 6-10-6V10z' opacity='.35'/%3E%3Cpath d='M16 10l5 3v6l-5 3-5-3v-6z'/%3E%3C/g%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="masthead">
+    <div class="wrap">
+      <nav class="site-nav" aria-label="Pages">
+        <a href="./">Email demo</a>
+        <a href="flight.html">Flight simulator</a>
+        <a href="polytrack.html" aria-current="page">PolyTrack</a>
+      </nav>
+      <p class="eyebrow">Drosophila visual system · PolyModLoader mod</p>
+      <h1>The fly plays PolyTrack</h1>
+      <p class="lede">A mod for Kodub's browser racer. The fly watches the game through its 721-facet eye, learns
+        from a teacher's lap, then drives from its own neurons.</p>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="card about" aria-labelledby="install-heading">
+      <h2 id="install-heading">Install</h2>
+      <ol class="steps">
+        <li>Open <a href="https://web.polymodloader.com/">PolyModLoader</a> (the community mod loader for PolyTrack),
+          or its desktop app.</li>
+        <li>Open <strong>Mods</strong>, choose <strong>Add URL</strong> and paste:
+          <pre class="url">https://jacktheone0.github.io/flyvis-web/polytrack</pre></li>
+        <li>Pick <strong>latest</strong>, click <strong>Load</strong>, then <strong>Apply</strong>. A
+          <strong>🪰 Fly driver</strong> panel appears on the right of the game.</li>
+      </ol>
+      <p class="muted small">Built for PolyTrack 0.6.3. A game update may break it until the mod is updated.</p>
+    </section>
+
+    <section class="card about" aria-labelledby="use-heading">
+      <h2 id="use-heading">Teach, train, race</h2>
+      <ol class="steps">
+        <li><strong>Start a race.</strong> Summer 1 is a good first track: it has walls and plain curves.</li>
+        <li><strong>Teach.</strong> Press <em>I drive</em> and drive 3–5 clean laps (stop and start again between
+          laps if you like; everything adds up). Include a few recoveries: drift toward a wall on purpose, then steer back.</li>
+        <li><strong>Train.</strong> Press <em>Train the fly</em>. It says how much of your steering it predicts on
+          driving it didn't train on.</li>
+        <li><strong>Race.</strong> Restart the race and press <kbd>F</kbd>. The fly drives in slow motion.</li>
+      </ol>
+      <h3>While it drives, everything happens in the game</h3>
+      <ul class="steps">
+        <li><strong>Correct it:</strong> just press the arrow keys. You take over at once; let go and the fly takes
+          back over about half a second later. Your corrections count double, and the fly retrains in the background.</li>
+        <li><strong>Reward it:</strong> <kbd>G</kbd> (😊, "dopamine") when it did well, <kbd>B</kbd> (😖, "pain") when it
+          did badly. Passing a checkpoint is an automatic reward; crashing or getting stuck is an automatic punishment.</li>
+        <li><strong>Pick its brain:</strong> <em>Route memory</em> recalls what you did where the view looked the same
+          (how ants and bees follow routes). It's best for repeating one track. <em>Decoder</em> is a learned rule that
+          can generalize, and responds to rewards directly.</li>
+      </ul>
+      <p class="muted small">Everything it learned is saved in your browser. <em>Forget everything it learned</em> starts over.
+        If the car stops for 1.5 seconds, a helper presses "return to last checkpoint". That helper isn't the fly.</p>
+    </section>
+
+    <section class="card about" aria-labelledby="how-heading">
+      <h2 id="how-heading">What's really happening</h2>
+      <div class="about-grid">
+        <div>
+          <h3>The fly's part</h3>
+          <p>Each frame the game draws is sampled by the fly's 721 eye facets and fed to the same 45,669-neuron
+            <a href="https://github.com/TuragaLab/flyvis">flyvis</a> network as the other demos. The decoder reads only the
+            34 output cell types, the signals the optic lobe sends to the rest of the fly's brain, averaged over a
+            6 × 3 grid of the visual field.</p>
+        </div>
+        <div>
+          <h3>How it learns</h3>
+          <p>The fly's own wiring never changes. On top of its output neurons it learns three ways. It <em>imitates</em>
+            you: a decoder fitted to your laps and corrections. It <em>remembers</em>: stored views from your laps.
+            It is <em>reinforced</em>: it wobbles its steering slightly, and a reward strengthens whatever it did in the
+            last 1.5 seconds, the most recent moments most (like dopamine acting on an eligibility trace), while a
+            punishment reverses it. Its features include a slowly fading trace of the last half-second, a little short-term memory.</p>
+        </div>
+        <div>
+          <h3>Slow motion and fair play</h3>
+          <p>The mod patches the game's physics clock so game time waits for the fly's brain: 20 ms of racing per brain step.
+            That's why leaderboard submissions, record verification and multiplayer are switched off while the mod is loaded.
+            Slow-motion laps aren't real laps.</p>
+        </div>
+      </div>
+      <h3>How well does it drive?</h3>
+      <p>Honestly: unproven. In testing, the mod, the slow motion and the whole teach, train and race loop work, but
+        the built-in autopilot I first tried was too poor a teacher, so it's gone. A decoder trained on its laps couldn't predict steering on
+        track it hadn't seen. Clean laps from a human are the experiment. The accuracy shown after training (how much
+        of your steering the fly predicts on driving it didn't train on) tells you whether it has a chance. Well above 50% is promising;
+        near zero means it hasn't learned to drive.</p>
+      <p class="muted small">PolyTrack is by Kodub. PolyModLoader is a community project; this mod doesn't include
+        or redistribute any game files. Blocking online writes follows the approach of
+        <a href="https://github.com/Gotchaaaaaa/poly-bot">poly-bot</a>. This project isn't affiliated with Kodub, PolyModLoader or the
+        flyvis authors.</p>
+    </section>
+  </main>
+</body>
+</html>

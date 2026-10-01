@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fly Brain, Live</title>
+  <meta name="description" content="A connectome-constrained model of the fruit fly visual system, running live in your browser. Show it an email and watch 45,669 simulated neurons react.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cg fill='%23ffb454'%3E%3Cpath d='M16 4l10 6v12l-10 6-10-6V10z' opacity='.35'/%3E%3Cpath d='M16 10l5 3v6l-5 3-5-3v-6z'/%3E%3C/g%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="masthead">
+    <div class="wrap">
+      <nav class="site-nav" aria-label="Pages">
+        <a href="./" aria-current="page">Email demo</a>
+        <a href="flight.html">Flight simulator</a>
+        <a href="polytrack.html">PolyTrack</a>
+      </nav>
+      <p class="eyebrow">Drosophila visual system · running in your browser</p>
+      <h1>Fly Brain, Live</h1>
+      <p class="lede">A model of the fruit fly's visual system, wired from its connectome.
+        Show it an email and watch its neurons react as your words scroll past its eye.</p>
+      <ul class="facts" aria-label="Model size">
+        <li><strong id="fact-neurons">45,669</strong> neurons</li>
+        <li><strong id="fact-synapses">1,513,231</strong> synapses</li>
+        <li><strong>65</strong> cell types</li>
+        <li><strong>721</strong> eye facets</li>
+      </ul>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="stage" aria-labelledby="email-heading">
+      <form id="email-form" class="card email-card">
+        <h2 id="email-heading">Show the fly an email</h2>
+        <div class="examples" role="group" aria-label="Example emails">
+          <span class="muted">Try:</span>
+        </div>
+        <label>From <span class="muted">(optional, for replying)</span>
+          <input id="email-from" type="email" autocomplete="off" placeholder="friend@example.com">
+        </label>
+        <label>Subject
+          <input id="email-subject" type="text" autocomplete="off" required maxlength="120">
+        </label>
+        <label>Message
+          <textarea id="email-body" rows="5" maxlength="2000"></textarea>
+        </label>
+        <div class="options">
+          <label>Letter size
+            <select id="opt-size">
+              <option value="80">Small</option>
+              <option value="130" selected>Medium</option>
+              <option value="190">Large</option>
+            </select>
+          </label>
+          <label>Scroll speed
+            <select id="opt-speed">
+              <option value="4">Slow</option>
+              <option value="8" selected>Medium</option>
+              <option value="12">Fast</option>
+            </select>
+          </label>
+        </div>
+        <button id="show-btn" class="primary" type="submit" disabled>Loading the fly…</button>
+        <p class="privacy">Your email never leaves this page. The whole simulation runs on your device, and nothing is sent to a server.</p>
+      </form>
+
+      <div class="card vision-card">
+        <h2>What the fly sees</h2>
+        <div class="views">
+          <figure>
+            <canvas id="screen-view" width="380" height="380" aria-label="The email text scrolling past, as you would see it"></canvas>
+            <figcaption>Your view</figcaption>
+          </figure>
+          <figure>
+            <canvas id="eye-view" width="380" height="380" aria-label="The same scene sampled by the fly's 721 eye facets"></canvas>
+            <figcaption>The fly's eye: 721 facets</figcaption>
+          </figure>
+        </div>
+        <div class="transport">
+          <button id="play-btn" type="button" disabled aria-label="Pause">❚❚</button>
+          <div class="rate" role="group" aria-label="Playback speed">
+            <button type="button" data-rate="1" class="on">1×</button>
+            <button type="button" data-rate="2">2×</button>
+            <button type="button" data-rate="4">4×</button>
+          </div>
+          <button id="skip-btn" type="button" disabled>Skip to reply</button>
+          <div class="progress" aria-hidden="true"><div id="progress-bar"></div></div>
+          <span id="clock" class="mono">0.0 s</span>
+        </div>
+        <div class="meter">
+          <span class="meter-label">What the fly feels moving</span>
+          <div class="meter-row">
+            <span aria-hidden="true">◀ left</span>
+            <div class="meter-track" role="img" id="meter" aria-label="Motion sensed by the T4/T5 cells: none yet">
+              <div id="meter-fill"></div>
+            </div>
+            <span aria-hidden="true">right ▶</span>
+          </div>
+          <p class="muted small">Live balance of the direction-selective T4/T5 cells that prefer leftward vs rightward motion.</p>
+        </div>
+        <p id="status" class="status" role="status" aria-live="polite">Loading the fly's brain…</p>
+      </div>
+    </section>
+
+    <section class="card reply-card" id="reply" hidden aria-labelledby="reply-heading">
+      <div class="reply-head">
+        <h2 id="reply-heading">The fly's reply</h2>
+        <div class="reply-actions">
+          <button id="copy-btn" type="button">Copy</button>
+          <a id="mail-btn" class="button" href="#">Open in email app</a>
+        </div>
+      </div>
+      <pre id="reply-text"></pre>
+      <p class="muted small">The reply is a template filled in with numbers measured from the simulation.
+        The fly can't read. Its eye is far too coarse to make out letters, and the model has no language areas.
+        Only the facts are its own.</p>
+    </section>
+
+    <section class="brain" aria-labelledby="brain-heading">
+      <div class="brain-head">
+        <div>
+          <h2 id="brain-heading">Inside the brain</h2>
+          <p class="muted">Every square is one neuron, drawn where its column sits in the eye. Each panel is one cell type (all cells of a type share the same wiring). Click a panel to see its wiring and activity.</p>
+        </div>
+        <div class="legend">
+          <div class="colorbar" aria-hidden="true"></div>
+          <div class="legend-labels"><span>hyperpolarized</span><span>rest</span><span>depolarized</span></div>
+          <label class="gain">Contrast <input id="gain" type="range" min="0" max="4" step="0.5" value="1.5"></label>
+        </div>
+      </div>
+      <div class="brain-body">
+        <div id="groups"></div>
+        <aside id="detail" class="card detail" aria-live="polite"></aside>
+      </div>
+    </section>
+
+    <section class="about card" aria-labelledby="about-heading">
+      <h2 id="about-heading">What is this?</h2>
+      <div class="about-grid">
+        <div>
+          <h3>The model</h3>
+          <p>This is <a href="https://github.com/TuragaLab/flyvis">flyvis</a>, the model from
+            Lappalainen et al., <a href="https://www.nature.com/articles/s41586-024-07939-3"><em>Connectome-constrained networks predict neural activity across the fly visual system</em></a> (Nature, 2024).
+            Its wiring comes from electron-microscopy reconstructions of the fruit fly's optic lobe. Training only tuned
+            one strength per connection type, plus each cell type's resting potential and time constant, so that the network could
+            report visual motion. The network running here is model <span class="mono" id="model-name">flow/0000/000</span> from the published ensemble.</p>
+        </div>
+        <div>
+          <h3>The simulation</h3>
+          <p>Each neuron is a leaky, non-spiking unit and the synapses are graded, as in flyvis.
+            The email is drawn onto a strip that scrolls across the eye, sampled by the same box filter flyvis uses,
+            and integrated in steps of 20 ms. This JavaScript port is tested against flyvis itself and matches it to within about
+            10<sup>-6</sup>.</p>
+        </div>
+        <div>
+          <h3>What it can't do</h3>
+          <p>This is only the visual system: the part that turns light into motion signals. There is no memory,
+            no language and no decision-making here. The fly's reply tells you how its neurons responded, not what the email said.</p>
+        </div>
+      </div>
+      <p class="muted small">Model, weights and connectome: flyvis, MIT License © 2023 Janne K. Lappalainen, Fabian D. Tschopp,
+        Mason McGill, Jakob H. Macke, Srinivas C. Turaga. This site isn't affiliated with the authors.</p>
+    </section>
+  </main>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
